@@ -25,6 +25,11 @@ func (m *MockLimiter) Refill(key string, tokens float64) error {
 	return args.Error(0)
 }
 
+func (m *MockLimiter) Available(key string) (float64, error) {
+	args := m.Called(key)
+	return args.Get(0).(float64), args.Error(1)
+}
+
 func TestRateLimitMiddleware_Allowed(t *testing.T) {
 	// Setup
 	limiter := new(MockLimiter)

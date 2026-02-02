@@ -11,4 +11,8 @@ type Limiter interface {
 	// Used when a user pays to refill their rate limit quota.
 	// Returns error if the refill fails.
 	Refill(key string, tokens float64) error
+
+	// Available returns the current number of tokens for the given key.
+	// Useful for monitoring and debugging.
+	Available(key string) (float64, error)
 }

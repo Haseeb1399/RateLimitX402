@@ -290,3 +290,147 @@ func TestTokenBucket_BurstThenThrottle(t *testing.T) {
 		t.Error("Should be allowed after refill")
 	}
 }
+
+func TestTokenBucket_RefillMethod(t *testing.T) {
+	client, cleanup := setupMiniredis(t)
+	defer cleanup()
+
+	rtb := NewTokenBucket(Config{
+		Client:     client,
+		Capacity:   5,
+		RefillRate: 1,
+	})
+
+	// Empty the bucket
+	for i := 0; i < 5; i++ {
+		rtb.Allow("refill-method-test")
+	}
+
+	// Bucket should be empty
+	allowed, _ := rtb.Allow("refill-method-test")
+	if allowed {
+		t.Error("Bucket should be empty")
+	}
+
+	// Refill with 3 tokens
+	err := rtb.Refill("refill-method-test", 3)
+	if err != nil {
+		t.Fatalf("Refill error: %v", err)
+	}
+
+	// Should now have 3 tokens
+	for i := 0; i < 3; i++ {
+		allowed, _ = rtb.Allow("refill-method-test")
+		if !allowed {
+			t.Errorf("Request %d should be allowed after refill", i+1)
+		}
+	}
+
+	// 4th should be rejected
+	allowed, _ = rtb.Allow("refill-method-test")
+	if allowed {
+		t.Error("4th request should be rejected")
+	}
+}
+
+func TestTokenBucket_RefillExceedsCapacity(t *testing.T) {
+	client, cleanup := setupMiniredis(t)
+	defer cleanup()
+
+	rtb := NewTokenBucket(Config{
+		Client:     client,
+		Capacity:   5,
+		RefillRate: 1,
+	})
+
+	// Start with full bucket (5 tokens)
+	// Refill with 5 more - should allow overflow
+	err := rtb.Refill("overflow-test", 5)
+	if err != nil {
+		t.Fatalf("Refill error: %v", err)
+	}
+
+	// Should now have 10 tokens (5 original + 5 refill)
+	successCount := 0
+	for i := 0; i < 12; i++ {
+		allowed, _ := rtb.Allow("overflow-test")
+		if allowed {
+			successCount++
+		}
+	}
+
+	if successCount != 10 {
+		t.Errorf("Expected 10 successful requests (overflow), got %d", successCount)
+	}
+}
+
+func TestTokenBucket_PartialConsumeAndRefill(t *testing.T) {
+	client, cleanup := setupMiniredis(t)
+	defer cleanup()
+
+	rtb := NewTokenBucket(Config{
+		Client:     client,
+		Capacity:   5,
+		RefillRate: 0.01, // Very slow refill to avoid natural regen interference
+	})
+
+	// Start with 5 tokens, consume 3 (leaving 2)
+	for i := 0; i < 3; i++ {
+		allowed, _ := rtb.Allow("partial-test")
+		if !allowed {
+			t.Errorf("Request %d should be allowed", i+1)
+		}
+	}
+
+	// Refill with 5 more tokens (2 + 5 = 7, exceeds capacity)
+	err := rtb.Refill("partial-test", 5)
+	if err != nil {
+		t.Fatalf("Refill error: %v", err)
+	}
+
+	// Should have 7 tokens now
+	successCount := 0
+	for i := 0; i < 10; i++ {
+		allowed, _ := rtb.Allow("partial-test")
+		if allowed {
+			successCount++
+		}
+	}
+
+	if successCount != 7 {
+		t.Errorf("Expected 7 successful requests (2 remaining + 5 refill), got %d", successCount)
+	}
+}
+
+func TestTokenBucket_Available(t *testing.T) {
+	client, cleanup := setupMiniredis(t)
+	defer cleanup()
+
+	rtb := NewTokenBucket(Config{
+		Client:     client,
+		Capacity:   5,
+		RefillRate: 1,
+	})
+
+	// New key should have full capacity
+	available, err := rtb.Available("available-test")
+	if err != nil {
+		t.Fatalf("Available error: %v", err)
+	}
+	if available != 5 {
+		t.Errorf("Expected 5 available tokens for new key, got %.2f", available)
+	}
+
+	// Consume 2 tokens
+	rtb.Allow("available-test")
+	rtb.Allow("available-test")
+
+	// Should have ~3 tokens (allow small margin for timing)
+	available, err = rtb.Available("available-test")
+	if err != nil {
+		t.Fatalf("Available error: %v", err)
+	}
+	if available < 2.9 || available > 3.1 {
+		t.Errorf("Expected ~3 available tokens after consuming 2, got %.2f", available)
+	}
+}

@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"log"
 	"sync"
 	"time"
 
@@ -62,11 +63,12 @@ func (tb *TokenBucket) Allow(key string) (bool, error) {
 }
 
 // Available returns the current number of tokens (after a refill).
-func (tb *TokenBucket) Available() float64 {
+// The key parameter is ignored for in-memory implementation (single bucket).
+func (tb *TokenBucket) Available(key string) (float64, error) {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
 	tb.refill()
-	return tb.tokens
+	return tb.tokens, nil
 }
 
 // Refill adds tokens to the bucket without capping at capacity.
@@ -76,8 +78,10 @@ func (tb *TokenBucket) Refill(key string, tokens float64) error {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
 
+	before := tb.tokens
 	tb.tokens += tokens
 	// No cap - allow overflow beyond capacity for paid tokens
+	log.Printf("[REFILL] key=%s before=%.2f added=%.2f after=%.2f", key, before, tokens, tb.tokens)
 	return nil
 }
 

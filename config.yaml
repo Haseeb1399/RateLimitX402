@@ -2,9 +2,9 @@ server:
   port: ":8081"
 
 ratelimit:
-  capacity: 4      # Maximum tokens in bucket
+  capacity: 4      # Maximum tokens in bucket 
   refill_rate: 4   # Tokens added per second
-  strategy: "memory" # "memory" or "redis"
+  strategy: "redis" # "memory" or "redis"
 
 redis:
   addr: "localhost:6379"

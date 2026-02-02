@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/haseeb/ratelimiter/pkg/ratelimit"
@@ -43,9 +44,15 @@ func NewTokenBucket(cfg Config) *TokenBucket {
 		local tokens = tonumber(data[1]) or capacity
 		local last_refill = tonumber(data[2]) or now
 
-		-- Refill tokens based on elapsed time
+		-- Natural refill based on elapsed time
+		-- Only add tokens if below capacity (preserves overflow from paid refills)
 		local elapsed = now - last_refill
-		tokens = math.min(capacity, tokens + elapsed * refill_rate)
+		if tokens < capacity then
+			tokens = tokens + elapsed * refill_rate
+			if tokens > capacity then
+				tokens = capacity
+			end
+		end
 
 		-- Try to consume one token
 		if tokens >= 1 then
@@ -101,6 +108,7 @@ func (r *TokenBucket) Refill(key string, tokens float64) error {
 	fullKey := r.keyPrefix + key
 
 	// Lua script for atomic refill without capacity cap
+	// Returns both old and new token counts for logging
 	refillScript := redis.NewScript(`
 		local key = KEYS[1]
 		local tokens_to_add = tonumber(ARGV[1])
@@ -110,22 +118,82 @@ func (r *TokenBucket) Refill(key string, tokens float64) error {
 		local current = tonumber(redis.call("HGET", key, "tokens")) or capacity
 		local new_tokens = current + tokens_to_add
 		-- No cap - allow overflow beyond capacity for paid tokens
-		
+
 		redis.call("HSET", key, "tokens", new_tokens)
 		redis.call("EXPIRE", key, math.ceil(capacity / refill_rate) + 1)
-		return new_tokens
+		return {current, new_tokens}
 	`)
 
-	_, err := refillScript.Run(
+	result, err := refillScript.Run(
 		context.Background(),
 		r.client,
 		[]string{fullKey},
 		tokens,
 		r.capacity,
 		r.refillRate,
-	).Result()
+	).Int64Slice()
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	oldTokens := float64(result[0])
+	newTokens := float64(result[1])
+	log.Printf("[REFILL] key=%s before=%.2f added=%.2f after=%.2f", key, oldTokens, tokens, newTokens)
+
+	return nil
+}
+
+// Available returns the current number of tokens for the given key.
+// This is useful for debugging and testing.
+func (r *TokenBucket) Available(key string) (float64, error) {
+	fullKey := r.keyPrefix + key
+
+	// Lua script to get current tokens after natural refill
+	availableScript := redis.NewScript(`
+		local key = KEYS[1]
+		local capacity = tonumber(ARGV[1])
+		local refill_rate = tonumber(ARGV[2])
+		local now = tonumber(ARGV[3])
+
+		local data = redis.call("HMGET", key, "tokens", "last_refill")
+		local tokens = tonumber(data[1])
+		local last_refill = tonumber(data[2])
+
+		-- If key doesn't exist, return capacity
+		if tokens == nil then
+			return capacity
+		end
+
+		-- Calculate natural refill (but don't modify)
+		-- Only add tokens if below capacity (preserves overflow from paid refills)
+		if last_refill ~= nil and tokens < capacity then
+			local elapsed = now - last_refill
+			tokens = tokens + elapsed * refill_rate
+			if tokens > capacity then
+				tokens = capacity
+			end
+		end
+
+		return tokens
+	`)
+
+	now := float64(time.Now().UnixMicro()) / 1e6
+
+	result, err := availableScript.Run(
+		context.Background(),
+		r.client,
+		[]string{fullKey},
+		r.capacity,
+		r.refillRate,
+		now,
+	).Float64()
+
+	if err != nil {
+		return 0, err
+	}
+
+	return result, nil
 }
 
 // Ensure TokenBucket implements Limiter interface.

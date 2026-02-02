@@ -31,7 +31,7 @@ func main() {
 	)
 
 	// Make request to paid endpoint (payment is handled automatically)
-	for i := 1; i <= 10; i++ {
+	for i := 1; i <= 12; i++ {
 		func() {
 			start := time.Now()
 			resp, err := httpClient.Get("http://localhost:8081/cpu")
@@ -47,6 +47,14 @@ func main() {
 			switch resp.StatusCode {
 			case 200:
 				fmt.Printf("Request %d: 200 OK (took %v)\n", i, duration)
+				fmt.Println(string(body))
+				resp, err := httpClient.Get("http://localhost:8081/tokens")
+				if err != nil {
+					fmt.Printf("Request %d error: %v\n", i, err)
+					return
+				}
+				defer resp.Body.Close()
+				body, _ := io.ReadAll(resp.Body)
 				fmt.Println(string(body))
 			default:
 				fmt.Printf("Request %d: %d - %s (took %v)\n", i, resp.StatusCode, string(body), duration)
