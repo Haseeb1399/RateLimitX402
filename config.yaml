@@ -1,0 +1,21 @@
+server:
+  port: ":8081"
+
+ratelimit:
+  capacity: 4      # Maximum tokens in bucket
+  refill_rate: 4   # Tokens added per second
+  strategy: "memory" # "memory" or "redis"
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+
+
+payment:
+  enabled: true
+  facilitator_url: "https://www.x402.org/facilitator"
+  wallet_address: "0x95eB3EcE2e308eCC51c8498a19cB4D5B5B929675"
+  price_per_capacity: "0.001"  # USDC per capacity refill
+  network: "base-sepolia"
+  currency: "USDC"
