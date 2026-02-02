@@ -4,7 +4,7 @@ server:
 ratelimit:
   capacity: 4      # Maximum tokens in bucket 
   refill_rate: 4   # Tokens added per second
-  strategy: "redis" # "memory" or "redis"
+  strategy: "memory" # "memory" or "redis"
 
 redis:
   addr: "localhost:6379"
