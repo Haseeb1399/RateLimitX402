@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	x402 "github.com/coinbase/x402/go"
@@ -18,6 +21,7 @@ import (
 	"github.com/haseeb/ratelimiter/pkg/ratelimit"
 	"github.com/haseeb/ratelimiter/pkg/ratelimit/memory"
 	ratelimitredis "github.com/haseeb/ratelimiter/pkg/ratelimit/redis"
+	"github.com/haseeb/ratelimiter/pkg/trust"
 )
 
 func main() {
@@ -109,8 +113,23 @@ func main() {
 		}
 		cancel()
 
+		// Create trust tracker for optimistic settlement
+		var trustTracker *trust.Tracker
+		var settlementQueue *SettlementQueue
+		if cfg.Payment.Optimistic.Enabled {
+			trustTracker = trust.New(trust.Config{
+				Threshold: cfg.Payment.Optimistic.TrustThreshold,
+				Window:    cfg.Payment.Optimistic.TrustWindow,
+			})
+			// Create settlement queue for sequential background processing
+			settlementQueue = NewSettlementQueue(httpServer, trustTracker, 100)
+			log.Printf("Optimistic settlement enabled (threshold: %d in %s, queued settlements)",
+				cfg.Payment.Optimistic.TrustThreshold,
+				cfg.Payment.Optimistic.TrustWindow)
+		}
+
 		// Apply custom rate limit + payment middleware
-		r.Use(hybridRateLimitPaymentMiddleware(limiter, httpServer, cfg.RateLimit.Capacity))
+		r.Use(hybridRateLimitPaymentMiddleware(limiter, httpServer, cfg.RateLimit.Capacity, trustTracker, settlementQueue))
 
 		fmt.Printf("Payment enabled: %s %s on %s\n",
 			cfg.Payment.PricePerCapacity, cfg.Payment.Currency, cfg.Payment.Network)
@@ -153,7 +172,8 @@ func simpleRateLimitMiddleware(limiter ratelimit.Limiter) gin.HandlerFunc {
 // - If tokens available: serve request
 // - If rate limited AND payment provided: verify, settle, refill, serve
 // - If rate limited AND no payment: return 402 with payment requirements
-func hybridRateLimitPaymentMiddleware(limiter ratelimit.Limiter, httpServer *x402http.HTTPServer, capacity float64) gin.HandlerFunc {
+// - If trusted client: optimistically refill and settle in background queue
+func hybridRateLimitPaymentMiddleware(limiter ratelimit.Limiter, httpServer *x402http.HTTPServer, capacity float64, trustTracker *trust.Tracker, settlementQueue *SettlementQueue) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := c.ClientIP()
 
@@ -203,13 +223,39 @@ func hybridRateLimitPaymentMiddleware(limiter ratelimit.Limiter, httpServer *x40
 		}
 
 		// Payment present - process it (verification happens in ProcessHTTPRequest)
-		// Payment present - process it (verification happens in ProcessHTTPRequest)
 		paymentStart := time.Now()
 		result := httpServer.ProcessHTTPRequest(c.Request.Context(), reqCtx, nil)
 		verificationLatency := time.Since(paymentStart)
 
 		if result.Type == x402http.ResultPaymentVerified {
-			// Process settlement
+			// Extract wallet address from payment for trust tracking
+			walletAddr := extractWalletAddress(paymentHeader)
+
+			// Check if client is trusted for optimistic settlement
+			if trustTracker != nil && settlementQueue != nil && trustTracker.IsTrusted(walletAddr) {
+				// OPTIMISTIC: Refill immediately, settle via queue
+				if err := limiter.Refill(key, capacity); err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Refill error"})
+					c.Abort()
+					return
+				}
+
+				log.Printf("[OPTIMISTIC] Trusted wallet %s, queueing settlement (verify: %v)",
+					truncateWallet(walletAddr), verificationLatency)
+
+				// Enqueue settlement for sequential processing
+				settlementQueue.Enqueue(SettlementJob{
+					PaymentPayload:      *result.PaymentPayload,
+					PaymentRequirements: *result.PaymentRequirements,
+					WalletAddr:          walletAddr,
+				})
+
+				// Allow the request through immediately
+				c.Next()
+				return
+			}
+
+			// SYNCHRONOUS: Not trusted, settle before responding
 			settlementStart := time.Now()
 			settleResult := httpServer.ProcessSettlement(
 				c.Request.Context(),
@@ -228,8 +274,16 @@ func hybridRateLimitPaymentMiddleware(limiter ratelimit.Limiter, httpServer *x40
 				}
 				refillLatency := time.Since(refillStart)
 
-				log.Printf("[PAYMENT] Settled TX: %s in %v (Verify: %v, Settle: %v, Refill: %v)",
-					settleResult.Transaction, time.Since(paymentStart), verificationLatency, settlementLatency, refillLatency)
+				// Record success for trust building
+				if trustTracker != nil {
+					trustTracker.RecordSuccess(walletAddr)
+					log.Printf("[PAYMENT] Settled TX: %s in %v (Verify: %v, Settle: %v, Refill: %v) [trust: %d/%d]",
+						settleResult.Transaction, time.Since(paymentStart), verificationLatency, settlementLatency, refillLatency,
+						trustTracker.RecentPayments(walletAddr), 3) // 3 is threshold, could make configurable
+				} else {
+					log.Printf("[PAYMENT] Settled TX: %s in %v (Verify: %v, Settle: %v, Refill: %v)",
+						settleResult.Transaction, time.Since(paymentStart), verificationLatency, settlementLatency, refillLatency)
+				}
 
 				// Allow the request through
 				c.Next()
@@ -259,6 +313,47 @@ func hybridRateLimitPaymentMiddleware(limiter ratelimit.Limiter, httpServer *x40
 		}
 		c.Abort()
 	}
+}
+
+// extractWalletAddress extracts the sender wallet address from the payment header.
+// The payment header is a base64-encoded JSON with a "payload" containing "authorization.from".
+func extractWalletAddress(paymentHeader string) string {
+	if paymentHeader == "" {
+		return ""
+	}
+
+	// Try to decode the base64 payment header
+	decoded, err := base64.StdEncoding.DecodeString(paymentHeader)
+	if err != nil {
+		// Try URL-safe base64
+		decoded, err = base64.URLEncoding.DecodeString(paymentHeader)
+		if err != nil {
+			return ""
+		}
+	}
+
+	// Parse as JSON to extract the wallet address
+	var payment struct {
+		Payload struct {
+			Authorization struct {
+				From string `json:"from"`
+			} `json:"authorization"`
+		} `json:"payload"`
+	}
+
+	if err := json.Unmarshal(decoded, &payment); err != nil {
+		return ""
+	}
+
+	return strings.ToLower(payment.Payload.Authorization.From)
+}
+
+// truncateWallet returns a truncated wallet address for logging.
+func truncateWallet(wallet string) string {
+	if len(wallet) <= 10 {
+		return wallet
+	}
+	return wallet[:6] + "..." + wallet[len(wallet)-4:]
 }
 
 // GinAdapter implements x402http.HTTPAdapter for Gin

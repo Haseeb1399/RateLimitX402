@@ -19,3 +19,7 @@ payment:
   price_per_capacity: "0.001"  # USDC per capacity refill
   network: "base-sepolia"
   currency: "USDC"
+  optimistic:
+    enabled: true
+    trust_threshold: 3  # Successful payments to become trusted
+    trust_window: 1h    # Time window for counting payments

@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -33,14 +34,22 @@ type RedisConfig struct {
 	DB       int    `yaml:"db"`
 }
 
+// OptimisticConfig holds optimistic settlement configuration.
+type OptimisticConfig struct {
+	Enabled        bool          `yaml:"enabled"`
+	TrustThreshold int           `yaml:"trust_threshold"` // Payments needed to become trusted
+	TrustWindow    time.Duration `yaml:"trust_window"`    // Time window for counting payments
+}
+
 // PaymentConfig holds payment configuration for 402 responses.
 type PaymentConfig struct {
-	Enabled          bool   `yaml:"enabled"`
-	FacilitatorURL   string `yaml:"facilitator_url"`
-	WalletAddress    string `yaml:"wallet_address"`
-	PricePerCapacity string `yaml:"price_per_capacity"`
-	Network          string `yaml:"network"`
-	Currency         string `yaml:"currency"`
+	Enabled          bool             `yaml:"enabled"`
+	FacilitatorURL   string           `yaml:"facilitator_url"`
+	WalletAddress    string           `yaml:"wallet_address"`
+	PricePerCapacity string           `yaml:"price_per_capacity"`
+	Network          string           `yaml:"network"`
+	Currency         string           `yaml:"currency"`
+	Optimistic       OptimisticConfig `yaml:"optimistic"`
 }
 
 // Load reads a YAML config file and returns a Config struct.
