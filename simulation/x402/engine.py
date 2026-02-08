@@ -164,7 +164,7 @@ def simulate_scheme(config: SimulationConfig, scheme: str) -> SimulationResult:
         result.p95_latency_ms = np.percentile(latencies, 95)
         result.p99_latency_ms = np.percentile(latencies, 99)
     
-    result.total_time_ms = current_time
+    result.total_time_ms = current_time / config.num_users  # Per-user average
     
     return result
 
