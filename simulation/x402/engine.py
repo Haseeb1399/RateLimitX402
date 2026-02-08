@@ -60,6 +60,7 @@ def simulate_scheme(config: SimulationConfig, scheme: str) -> SimulationResult:
                 result.successful_requests += 1
                 user.successful_requests += 1
                 latencies.append(50.0)  # Normal request latency ~50ms
+                current_time += 50.0  # Advance time for request processing
                 continue
             
             # Rate limited! What happens next depends on scheme
@@ -74,12 +75,12 @@ def simulate_scheme(config: SimulationConfig, scheme: str) -> SimulationResult:
                     result.churned_users += 1
                     break
                 else:
-                    # User waits
-                    user.tokens = config.tokens_per_request
-                    user.tokens -= config.tokens_per_request
-                    result.successful_requests += 1
-                    latencies.append(wait_time)
-                    current_time += wait_time  # Blocking wait
+                    # User waits for natural token refill
+                    user.tokens = config.tokens_per_request  # After waiting, user has exactly enough tokens
+                    user.tokens -= config.tokens_per_request  # Consume tokens for the request (now 0)
+                    result.successful_requests += 1  
+                    latencies.append(wait_time)  
+                    current_time += wait_time 
                     
             elif scheme == "sync":
                 # Sync X402: Pay and wait for settlement
@@ -107,8 +108,8 @@ def simulate_scheme(config: SimulationConfig, scheme: str) -> SimulationResult:
                 result.total_payments += 1
                 result.total_revenue += config.price_per_refill_usd
                 result.successful_requests += 1
-                latencies.append(payment_latency)
-                current_time += payment_latency  # Blocking payment wait
+                latencies.append(payment_latency + 50.0) # Payment + request Procesing. 
+                current_time += payment_latency  + 50.0  # Blocking payment wait
                 
             elif scheme == "async":
                 # Async X402: Trusted users get fast response
@@ -152,8 +153,8 @@ def simulate_scheme(config: SimulationConfig, scheme: str) -> SimulationResult:
                 result.total_payments += 1
                 result.total_revenue += config.price_per_refill_usd
                 result.successful_requests += 1
-                latencies.append(payment_latency)
-                current_time += payment_latency  # Blocking payment wait
+                latencies.append(payment_latency + 50.0)  # Payment + request processing
+                current_time += payment_latency + 50.0  # Blocking payment wait
     
     # Calculate statistics
     if latencies:

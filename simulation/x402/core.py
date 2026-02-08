@@ -24,11 +24,11 @@ class SimulationConfig:
     tokens_per_payment: int = 4           # Tokens added per payment
     
     # --- Latency Distributions (from real benchmarks) ---
-    # Sync payment: mean ~3.0s, observed range 1.9s - 5.2s
+    # Sync payment: mean ~3.0s, observed range 1.9s - 5.2s (Verification + Payment)
     sync_latency_mean_ms: float = 3000.0
     sync_latency_std_ms: float = 800.0
     
-    # Async payment: mean ~300ms, observed range 250ms - 400ms  
+    # Async payment: mean ~300ms, observed range 250ms - 400ms   (Usually just verification. Payment settled Async)
     async_latency_mean_ms: float = 300.0
     async_latency_std_ms: float = 50.0
     
