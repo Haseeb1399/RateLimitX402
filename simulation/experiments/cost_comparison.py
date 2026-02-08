@@ -114,8 +114,8 @@ def plot_cost_comparison(results: dict, save_path: str = None):
         r = results[platform]
         subscription_costs.append(r["subscription_cost"])
         x402_costs.append(r["x402_cost"])
-        times_no_x402.append(r["time_no_x402_hours"])
-        times_x402.append(r["time_x402_hours"])
+        times_no_x402.append(r["time_no_x402_mins"])
+        times_x402.append(r["time_x402_mins"])
     
     # 1. Cost comparison
     ax = axes[0]
@@ -144,8 +144,8 @@ def plot_cost_comparison(results: dict, save_path: str = None):
     bars1 = ax.bar(x - width/2, times_no_x402, width, label='Without X402', color='#e74c3c')
     bars2 = ax.bar(x + width/2, times_x402, width, label='With X402 (Async)', color='#27ae60')
     
-    ax.set_ylabel('Time (hours)')
-    ax.set_title('Time to Complete 1M Requests')
+    ax.set_ylabel('Time (minutes)')
+    ax.set_title('Time to Complete (per user)')
     ax.set_xticks(x)
     ax.set_xticklabels(platforms, rotation=15, ha='right')
     ax.legend()
@@ -154,10 +154,10 @@ def plot_cost_comparison(results: dict, save_path: str = None):
     
     # Add value labels
     for bar, t in zip(bars1, times_no_x402):
-        ax.annotate(f'{t:.0f}h', xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
+        ax.annotate(f'{t:.0f}m', xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
                    ha='center', va='bottom', fontsize=8)
     for bar, t in zip(bars2, times_x402):
-        ax.annotate(f'{t:.0f}h', xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
+        ax.annotate(f'{t:.0f}m', xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
                    ha='center', va='bottom', fontsize=8)
     
     plt.tight_layout()
@@ -190,8 +190,8 @@ def main():
         no_x402 = simulate_scheme(config, "no_x402")
         async_x402 = simulate_scheme(config, "async")
         
-        print(f"\n  Without X402: {no_x402.total_time_ms/1000/3600:.1f} hours")
-        print(f"  With X402:    {async_x402.total_time_ms/1000/3600:.1f} hours")
+        print(f"\n  Without X402: {no_x402.total_time_ms/1000/60:.1f} minutes")
+        print(f"  With X402:    {async_x402.total_time_ms/1000/60:.1f} minutes")
         print(f"  X402 Cost:    ${async_x402.total_revenue:.2f} ({async_x402.total_payments} payments)")
         
         # Calculate subscription cost
@@ -206,8 +206,8 @@ def main():
         all_results[platform_name] = {
             "subscription_cost": subscription_cost,
             "x402_cost": async_x402.total_revenue,
-            "time_no_x402_hours": no_x402.total_time_ms / 1000 / 3600,
-            "time_x402_hours": async_x402.total_time_ms / 1000 / 3600,
+            "time_no_x402_mins": no_x402.total_time_ms / 1000 / 60,
+            "time_x402_mins": async_x402.total_time_ms / 1000 / 60,
             "total_requests": total_requests,
         }
     

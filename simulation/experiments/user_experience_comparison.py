@@ -35,16 +35,16 @@ def plot_cross_platform_comparison(all_results: dict, save_path: str = None):
     x = np.arange(len(platforms))
     width = 0.25
     
-    # 1. Total Time (hours) - grouped by platform
+    # 1. Total Time (minutes) - grouped by platform
     ax = axes[0]
     for i, (scheme, color, label) in enumerate(zip(schemes, colors, scheme_labels)):
-        times = [all_results[p][scheme].total_time_ms / 1000 / 3600 for p in platforms]
+        times = [all_results[p][scheme].total_time_ms / 1000 / 60 for p in platforms]  # minutes
         bars = ax.bar(x + i*width, times, width, label=label, color=color)
         for bar, t in zip(bars, times):
-            ax.annotate(f'{t:.0f}h', xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
+            ax.annotate(f'{t:.0f}m', xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
                        ha='center', va='bottom', fontsize=7, clip_on=False)
-    ax.set_ylabel('Time (hours)')
-    ax.set_title('Total Time to Complete Workload', pad=20)
+    ax.set_ylabel('Time (minutes)')
+    ax.set_title('Time to Complete (per user)', pad=20)
     ax.set_xticks(x + width)
     ax.set_xticklabels(platforms)
     ax.legend()

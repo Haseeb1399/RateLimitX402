@@ -140,18 +140,18 @@ def create_image1():
     x = np.arange(len(platform_names))
     width = 0.35
     
-    # Left: Time Comparison
+    # Left: Time Comparison (in minutes)
     ax = axes[0]
-    trad_times = [results[p]['no_x402'].total_time_ms/1000/3600 for p in platform_names]
-    x402_times = [results[p]['async'].total_time_ms/1000/3600 for p in platform_names]
+    trad_times = [results[p]['no_x402'].total_time_ms/1000/60 for p in platform_names]  # minutes
+    x402_times = [results[p]['async'].total_time_ms/1000/60 for p in platform_names]  # minutes
     
     bars1 = ax.bar(x - width/2, trad_times, width, label='Traditional', 
                    color=COLORS['traditional'], hatch=HATCHES['traditional'], edgecolor='black', linewidth=0.5)
-    bars2 = ax.bar(x + width/2, x402_times, width, label='X402', 
+    bars2 = ax.bar(x + width/2, x402_times, width, label='X402 (Async)', 
                    color=COLORS['async'], hatch=HATCHES['async'], edgecolor='black', linewidth=0.5)
     
-    ax.set_ylabel('Time (hours)')
-    ax.set_title('Time to Complete')
+    ax.set_ylabel('Time (minutes)')
+    ax.set_title('Time to Complete (per user)')
     ax.set_xticks(x)
     ax.set_xticklabels(platform_names)
     ax.set_yscale('log')
@@ -159,10 +159,10 @@ def create_image1():
     
     # Add labels
     for bar, t in zip(bars1, trad_times):
-        ax.annotate(f'{t:.0f}h', xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
+        ax.annotate(f'{t:.0f}m', xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
                    ha='center', va='bottom', fontsize=9, fontweight='bold')
     for bar, t in zip(bars2, x402_times):
-        ax.annotate(f'{t:.0f}h', xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
+        ax.annotate(f'{t:.0f}m', xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
                    ha='center', va='bottom', fontsize=9, fontweight='bold')
     ax.margins(y=0.2)
     
@@ -232,22 +232,22 @@ def create_image2():
     colors = [COLORS['traditional'], COLORS['sync'], COLORS['async']]
     hatches = [HATCHES['traditional'], HATCHES['sync'], HATCHES['async']]
     
-    # Left: Time Comparison
+    # Left: Time Comparison (in minutes)
     ax = axes[0]
-    times = [results[k].total_time_ms/1000/3600 for k in scheme_keys]
+    times = [results[k].total_time_ms/1000/60 for k in scheme_keys]  # minutes
     costs = [results[k].total_revenue for k in scheme_keys]
     
     bars = ax.bar(schemes, times, color=colors, edgecolor='black', linewidth=0.5)
     for bar, h in zip(bars, hatches):
         bar.set_hatch(h)
     
-    ax.set_ylabel('Time (hours)')
-    ax.set_title('Time to Complete')
+    ax.set_ylabel('Time (minutes)')
+    ax.set_title('Time to Complete (per user)')
     ax.set_yscale('log')
     
     # Add labels with cost
     for bar, t, c in zip(bars, times, costs):
-        label = f'{t:.1f}h\n(${c:.0f})' if c > 0 else f'{t:.0f}h\n($0)'
+        label = f'{t:.1f}m\n(${c:.0f})' if c > 0 else f'{t:.0f}m\n($0)'
         ax.annotate(label, xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
                    ha='center', va='bottom', fontsize=10, fontweight='bold')
     ax.margins(y=0.25)

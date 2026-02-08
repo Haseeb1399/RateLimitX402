@@ -63,8 +63,8 @@ def run_burst_experiment():
     print(f"Payments triggered: {sync.total_payments:,}")
     print(f"Payment rate: {sync.total_payments/total_requests*100:.1f}% of requests")
     print(f"Total X402 Cost: ${async_r.total_revenue:.2f}")
-    print(f"\nSync time:  {sync.total_time_ms/1000/3600:.1f} hours")
-    print(f"Async time: {async_r.total_time_ms/1000/3600:.1f} hours")
+    print(f"\nSync time:  {sync.total_time_ms/1000/60:.1f} minutes")
+    print(f"Async time: {async_r.total_time_ms/1000/60:.1f} minutes")
     print(f"Speedup:    {sync.total_time_ms/async_r.total_time_ms:.2f}x")
     print(f"\nSync avg latency:  {sync.avg_latency_ms:.0f}ms")
     print(f"Async avg latency: {async_r.avg_latency_ms:.0f}ms")
@@ -74,9 +74,9 @@ def run_burst_experiment():
     # Plot - 2 subplots: Time and P95 Latency
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     schemes = ["No X402", "Sync X402", "Async X402"]
-    times = [results["no_x402"].total_time_ms/1000/3600,
-             sync.total_time_ms/1000/3600,
-             async_r.total_time_ms/1000/3600]
+    times = [results["no_x402"].total_time_ms/1000/60,  # minutes
+             sync.total_time_ms/1000/60,
+             async_r.total_time_ms/1000/60]
     costs = [results["no_x402"].total_revenue,
              sync.total_revenue,
              async_r.total_revenue]
@@ -88,10 +88,10 @@ def run_burst_experiment():
     # 1. Time with cost labels
     ax = axes[0]
     bars = ax.bar(schemes, times, color=colors)
-    ax.set_ylabel('Time (hours)')
+    ax.set_ylabel('Time (minutes)')
     ax.set_title(f'Bursty Load: {sync.total_payments:,} payments triggered')
     for bar, t, c in zip(bars, times, costs):
-        label = f'{t:.1f}h\n(${c:.0f})' if c > 0 else f'{t:.0f}h\n($0)'
+        label = f'{t:.1f}m\n(${c:.0f})' if c > 0 else f'{t:.0f}m\n($0)'
         ax.annotate(label, xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
                    ha='center', va='bottom', fontweight='bold', fontsize=9)
     ax.set_yscale('log')
